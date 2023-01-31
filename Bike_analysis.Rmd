@@ -1,0 +1,226 @@
+---
+title: "factors_of_bikerental"
+output: html_document
+date: "2023-01-20"
+---
+
+```{r}
+library(tidyverse)
+library(dplyr)
+library(lubridate)
+library(ggplot2)
+```
+
+#Please explore what factors contribute to higher demand of bike sharing. Write the answer in the script.
+
+```{r}
+bike <- read_csv('/Users/xirao/Downloads/data_analyst_interview-main/D_bike_sharing.csv')
+```
+
+```{r}
+summary(bike)
+
+```
+
+# Weather related factors to bike rental
+Weather situation is a variable to describe the weather condition on that day, I classifiedt the numeric values to good, bad, and mist 
+
+```{r}
+weathersit_factors <- bike %>% 
+  select(weathersit,cnt) %>% 
+  group_by(weathersit) %>% 
+  summarise(total = sum(cnt)) 
+
+```
+
+by comparing the total number of bike rentals, we could observe that in good weather, people like riding bikes, then it's mist weather, the number of bike rentals in bad weather is least.
+
+```{r}
+weathersit_factors$weathersit <- str_replace(weathersit_factors$weathersit,c('1','2','3'),c('Good','Mist','Bad'))
+```
+
+```{r}
+ggplot(weathersit_factors, aes(weathersit,total,fill=weathersit)) +
+  geom_col()
+```
+another variable could affect bike rental is wind speed based on our understanding. the wind speed is a continous variable, so we could use the scatter plot to find patterns.
+
+```{r}
+wind <- bike %>% 
+  select(windspeed,cnt)
+```
+
+I build a scatter plot to find the distribution of bike rentals with the smooth line, a trend line over an existing plot. according to the plot, we could see that generally as the wind speed increases, the number of bike rentals decreases.
+
+```{r}
+ggplot(wind, aes(windspeed,cnt)) +
+  geom_point() +
+  geom_smooth(se = TRUE,colour = "red")
+```
+to get more specific values, I introduce the linear regression model to find the coefficient  between windspeed and bike rentals.
+
+```{r}
+
+library(car)
+```
+
+the coefficient is -5863, which means when the wind speed increase 1 unit, the number of bike rentals will decrease 5863.
+
+```{r}
+reg5 <- lm(cnt~windspeed,data = wind)
+reg5
+```
+I use the anova to test the model. according to the F value and P value, we could validate the variable is significant.
+
+```{r}
+anova(reg5)
+```
+qqplot is not used in this analysis. just to review the stat_qq in ggplot layer
+
+```{r}
+ggplot(reg5) +
+  stat_qq(aes(sample = .stdresid)) +
+  geom_abline(alpha = 1/5)
+```
+
+same methods used on the temperature factor. we could find when the temperature is around lower than 0.625, as the temperature increase the number of bike rentals will increase accordingly, however, when the temperature is higher than 0.625, the number of bike rentals will decrease.
+
+```{r}
+
+temp <- bike %>% 
+  select(temp,cnt,casual,registered)
+ggplot(temp,aes(temp,cnt)) +
+  geom_point() +
+  geom_smooth(se=TRUE,color='red')
+
+  
+```
+
+similarly I use the linear regression model to find the specific coefficient values, and anova table to validate the model. as the result, the variable temperature is also significant.
+
+```{r}
+reg6 <- lm(cnt~temp,data = temp)
+reg6
+```
+```{r}
+anova(reg6)
+```
+the following validates that temperature can affect the bike rentals no matter it is casual or registered
+
+```{r}
+temp_c <- bike %>% 
+  select(temp,casual,registered,cnt)
+ggplot(temp_c,aes(temp,cnt)) +
+  geom_point() +
+  geom_smooth(se=TRUE,color='red')
+```
+
+```{r}
+reg7 <- lm(casual~temp,data = temp_c)
+reg7
+anova(reg7)
+```
+
+
+```{r}
+hum <- bike %>% 
+  select(hum,cnt,casual,registered)
+ggplot(hum,aes(hum,cnt)) +
+  geom_point() +
+  geom_smooth(se=TRUE,color='red')
+```
+
+
+we will also try to find if the variable will affect casual and registered users respectively.
+
+
+```{r}
+
+hum_pivot <- hum %>% 
+  select(hum,cnt,casual,registered) %>% 
+  pivot_longer('cnt':'registered',names_to = 'Type',values_to = 'Number')
+temp_pivot <- temp %>% 
+  select(temp,cnt,casual,registered) %>% 
+  pivot_longer('cnt':'registered',names_to = 'Type',values_to = 'Number')
+
+```
+
+```{r}
+ggplot(temp_pivot,aes(temp,Number,group=Type,color=Type)) +
+  geom_point(aes(fill=Type)) +
+  geom_smooth(se = FALSE,color='red')+
+  facet_wrap(~Type)
+```
+
+
+```{r}
+ggplot(hum_pivot,aes(hum, Number,group=Type,color=Type)) +
+  geom_point() +
+  geom_smooth(se = FALSE,color = 'red') +
+  facet_wrap(~Type)
+```
+
+## Conclusion
+we found that both temperature and humidity will affect the bike rentals, but those factors have less impact on casual users, more on registered users. as the trend lines change dramatically.
+
+# time related factors
+
+
+the changes of bike rental in these two years.overall,  we found during the second half year of 2011, the number of bike rentals experienced a decrease, then it kept increasing until the end of 2012.
+
+```{r}
+change_type <- bike %>% 
+  select(dteday,casual,registered,cnt) %>% 
+  pivot_longer('casual':'cnt',names_to='Type',values_to = 'Number')
+ggplot(change_type,aes(dteday,Number,group=Type,color=Type)) +
+  geom_line()
+```
+
+
+so I try to explore if there exists a seasonal pattern in bike rentals. according to the bar chart from 2011 to 2013, we found generally the number of bike rentals in the beginning of years,such as January/Feburary, is lower than other months. the red bar represents casual users type, which has a clear seasonal pattern. Additionally, casual users rent less bike at the end of year as well, such as November and December.
+
+
+```{r}
+
+month <- bike %>% 
+  select(mnth,casual,registered) %>% 
+  pivot_longer('casual':'registered',names_to = "Type",values_to = 'Number') %>% 
+  mutate(Month = as.character(month(mnth, label = TRUE, abbr = FALSE)))
+```
+
+```{r}
+ggplot(month,aes(x=factor(Month,level=c("January","February","March","April","May","June","July" ,"August","September","October","November","December")),Number,color= Type,group=Type)) +
+  geom_col(position = 'dodge',aes(fill=Type),show.legend = FALSE) +
+  xlab('Month') 
+```
+
+
+#try to explore if weekday has effect on bike rental
+
+```{r}
+weekday_factors <- bike %>% 
+  select(weekday,registered,casual) %>% 
+  pivot_longer('registered':'casual',names_to='Type',values_to='Number')
+```
+
+```{r}
+ggplot(weekday_factors,aes(x=weekday,y=Number,group=Type,colour = Type)) +
+  geom_col(position="dodge",aes(fill=Type)) 
+```
+also, holiday and workday will affect people choose renting bikes.
+
+```{r}
+ggplot(bike, aes(holiday)) +
+  geom_bar()
+```
+
+
+```{r}
+ggplot(bike, aes(workingday)) +
+  geom_bar()
+```
+
+
+
+
+
